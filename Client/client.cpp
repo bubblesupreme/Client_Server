@@ -1,8 +1,6 @@
 #include "client.h"
 #include <thread>
-#include <string>
-DWORD WINAPI GetNewMessage(LPVOID client_socket);
-DWORD WINAPI ServerMessage(LPVOID client_socket);
+#include <iostream>
 
 Client::Client()
 {
@@ -48,7 +46,7 @@ Client::Client()
 		return ;
 	}
 
-	std::cout << "Successful connection with "<< SERVERADDR<<" \n\Enter 'quit' for quit" << std::endl;
+	std::cout << "Successful connection with "<< SERVERADDR << std::endl;
 	start();
 }
 
@@ -58,54 +56,49 @@ Client::~Client()
 }
 
 void Client::process() {
+	std::cout << "Enter your message to send\n"
+		<< "\t\or \connect to connect with other user\n" << "\tor \\quit to quit" << std::endl;
 	while (true) {
 		std::string answer;
 		char buf[1024];
-		std::cout << "\\send to send a msg" << std::endl;
 		std::cout << username << ": ";
 		std::getline(std::cin, answer);
-		if (answer == "\\send") {
-			std::cout << "To: ";
-			std::string To;
-			//std::cout<<"\n";
-			std::getline(std::cin, To);
-			std::cout << "Your msg: " << std::endl;
-			std::string what;
-			std::getline(std::cin, what);
-			//std::cout << "\n";
-			std::string loginStr = client_sendMessage(username,To, what);
-			send(my_sock, loginStr.c_str(), loginStr.length(), 0);
-		}
-		else if (answer == "\\listen") {
-			recv(my_sock, buf, sizeof(buf), 0);
-
-			std::cout << buf << std::endl;
+		if (answer == "\\connect") {
+			std::cout << "Username: " << std::endl;
+			std::string name;
+			std::getline(std::cin, name);
+			std::string sendMess = client_connect(username, name);
+			send(my_sock, sendMess.c_str(), sendMess.length(), 0);
 		}
 		else if (answer == "\\quit") {
-			//std::cout << "To: ";
 			std::string To ="0";
-			//std::cout<<"\n";
-			//std::getline(std::cin, To);
-			std::string loginStr = client_quitConversation(username, To);
+			std::string loginStr = client_quitConversation(username);
 			send(my_sock, loginStr.c_str(), loginStr.length(), 0);
 			exit(0);
 		
 		}
+		else
+		{
+			std::string sendMess = client_sendMessage(username, answer);
+			send(my_sock, sendMess.c_str(), sendMess.length(), 0);
+		}
 	}
 }
 void Client::listen() {
+	int bytesReceived;
 	while (true) {
 		char buf[1024];
-		recv(my_sock, buf, sizeof(buf), 0);
-		std::cout << buf << std::endl;
+		bytesReceived=recv(my_sock, buf, sizeof(buf), 0);
+		buf[bytesReceived] = '\0';
+		std::cout << "\n"<<buf;
 	}
 }
 void Client::start() {
 	//system("clear");
 
 	std::string answer;
-	std::cout << "Welcome to the chat client!" << std::endl;
-	std::cout << "Type \\create to create a new account or enter in your credentials to log in.\n\n";
+	std::cout << "Welcome to the chat client!\n" << std::endl;
+	std::cout << "Type\t\\create to create a new account or enter in your credentials to log in.\n\n";
 	bool flag = true;
 	while (true)
 	{
@@ -117,13 +110,25 @@ void Client::start() {
 		}
 		else {
 			std::cout << "Password: ";
-			//setPasswordInput(true);
 			std::getline(std::cin, password);
 		}
-		//setPasswordInput(false);
 
 		std::string loginStr = client_login(username, password);
 		send(my_sock, loginStr.c_str(), loginStr.length(), 0);
+
+
+		int bytesReceived;
+		char buf[1024];
+		while (true) {
+			bytesReceived = recv(my_sock, buf, sizeof(buf), 0);
+			buf[bytesReceived] = '\0';
+			if (std::string(buf) == "end")
+			{
+				break;
+			}
+			std::cout << "\n" << buf;
+		}
+
 		char response;
 		recv(my_sock, &response, sizeof(response), 0);
 
@@ -132,19 +137,15 @@ void Client::start() {
 		}
 		else {
 			std::cout << "You are authorized" << std::endl;
-			//system("clear");
-			//std::cout << "Nice";
+
+
 			break;
 		}
-		//recv(my_sock, &response, sizeof(response), 0);
 	}
 	std::thread thr(&Client::process,this);
 	std::thread thr2(&Client::listen,this);
 	thr.join();
 	thr2.join();
-	//process();
-
-	//mainMenu();
 }
 
 
@@ -170,107 +171,6 @@ void Client::createAccount() {
 	char response;
 	recv(my_sock, &response, sizeof(response), 0);
 
-	if (response == CREATE_ACCOUNT_SUCCESS) {
-		/*std::string loginStr = client_login(username, password);
-		send(my_sock, loginStr.c_str(), loginStr.length(), 0);
-		char response;
-		recv(my_sock, &response, sizeof(response), 0);
-		//system("clear");*/
-		
-	}
+	if (response == CREATE_ACCOUNT_SUCCESS) {}
 
-}
-
-
-
-void Client::handle()
-{
-	DWORD thID;
-	CreateThread(NULL, NULL, ServerMessage, &my_sock, NULL, &thID);
-
-	int nsize;
-	while (true)
-	{
-		//buff[nsize] = 0;
-
-		std::cout << "S<=C:"; 
-		fgets(&buff[0], sizeof(buff) - 1, stdin);
-
-		if (!strcmp(&buff[0], "quit\n"))
-		{
-			std::cout << "Exit..." << std::endl;
-			closesocket(my_sock);
-			WSACleanup();
-			return ;
-		}
-		if (sizeof(buff) > 0)
-		{
-			send(my_sock, &buff[0], sizeof(buff), 0);
-		}
-	}
-
-
-	closesocket(my_sock);
-	WSACleanup();
-	return ;
-}
-
-DWORD WINAPI GetNewMessage(LPVOID client_socket)
-{
-
-	SOCKET my_sock;
-	my_sock = ((SOCKET *)client_socket)[0];
-	int nsize;
-	char buff[1024];
-
-	while ((nsize = recv(my_sock, &buff[0], sizeof(buff) - 1, 0)) != SOCKET_ERROR)
-	{
-
-		buff[nsize] = 0;
-
-		std::cout << "S=>C:"<< buff << std::endl;
-		//Sleep(2000);
-	}
-	std::cout << "Recv error " << WSAGetLastError() << std::endl;
-	return 0;
-}
-
-DWORD WINAPI ServerMessage(LPVOID client_socket)
-{
-
-	SOCKET my_sock;
-	my_sock = ((SOCKET *)client_socket)[0];
-	int nsize;
-	char buff[1024];
-
-	SOCKET client_socketT;
-	sockaddr_in client_addr;
-	int client_addr_size = sizeof(client_addr);
-	SOCKET mysocket = socket(AF_INET, SOCK_STREAM, 0);
-
-	recv(my_sock, &buff[0], sizeof(buff) - 1, 0);
-	std::cout << "S=>C:" << buff << std::endl;
-
-	while ((nsize = recv(my_sock, &buff[0], sizeof(buff) - 1, 0)) != SOCKET_ERROR)
-	{
-
-		buff[nsize] = 0;
-
-		std::cout << "S=>C:" << buff << std::endl;
-		client_socketT = accept(mysocket, (sockaddr *)&client_addr, &client_addr_size);
-			HOSTENT *hst;
-			hst = gethostbyaddr((char *)
-				&client_addr.sin_addr.s_addr, 4, AF_INET);
-
-			std::cout << "+" << "new connect!\n" << inet_ntoa(client_addr.sin_addr) << std::endl;
-
-			DWORD thID;
-			CreateThread(NULL, NULL, GetNewMessage, &client_socketT, NULL, &thID);
-
-
-			
-		//Sleep(2000);
-	}
-	std::cout << "Recv error " << WSAGetLastError() << std::endl;
-	return 0;
 }

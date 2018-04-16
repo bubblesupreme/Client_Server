@@ -55,11 +55,10 @@ string client_login(string userName, string password) {
 }
 
 
-string client_sendMessage(string from, string to, string message) {
+string client_sendMessage(string from, string message) {
 	vector<string> data;
 	data.push_back("send");
 	data.push_back(from);
-	data.push_back(to);
 	data.push_back(message);
 
 	return convertToString(data);
@@ -76,9 +75,18 @@ string client_confirmUser(string confirm, string from) {
 }
 
 
-string client_quitConversation(string from, string to) {
+string client_quitConversation(string from) {
 	vector<string> data;
 	data.push_back("quit");
+	data.push_back(from);
+
+	return convertToString(data);
+}
+
+std::string client_connect(std::string from, std::string to)
+{
+	vector<string> data;
+	data.push_back("connect");
 	data.push_back(from);
 	data.push_back(to);
 

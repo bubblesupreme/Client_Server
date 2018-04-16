@@ -1,15 +1,10 @@
-#pragma once
+
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#pragma comment(lib, "ws2_32.lib")
-#pragma warning(disable: 4996)
-#include "helper.h"
-#include <iostream>
+#include "../Helper/helper.h"
 #include <WinSock2.h>
 #include <winsock.h>
-#define MY_PORT    666
-#define SERVERADDR "127.0.0.1"
 
 class Client
 {

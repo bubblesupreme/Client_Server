@@ -1,18 +1,36 @@
 #include "Server.h"
 
+#include <iostream>
+#include <fstream> 
+#include <sys/types.h>
+#include <thread>
+#include <sys/stat.h>
+#include <WS2tcpip.h>
+
 Server::Server() {
 	nClients = 0;
+	std::ifstream fin;
+	fin.open("C:\\Users\\home\\Documents\\\Visual Studio 2017\\Projects\\Client_Server\\users.txt");
+	if (!fin.is_open()) 
+		std::cout << "Файл не может быть открыт!\n";
+	else
+	{
+		while (!fin.eof())
+		{
+			User user("","","","");
+			fin >> user.userName;
+			fin >> user.password;
+			fin >> user.firstName;
+			fin >> user.lastName;
+			users.push_back(user);
+		}
+		fin.close();
+	}
 }
 
 Server::~Server() {
 }
 
-std::vector<SOCKET> clients;
-
-DWORD WINAPI CheckCommonBuffer(LPVOID client_socket);
-void hh();
-int bytes_recv;
-char* cbuff = (char*)"  ";
 
 void Server::startServer() {
 	if (WSAStartup(MAKEWORD(2, 2), &wData) == 0)
@@ -88,14 +106,7 @@ void Server::handle() {
 		{
 			std::cout << "No User on line" << std::endl;
 		}
-
-		//for (auto client : clients)
-		//{
-		//	send(client, "New member in our chat!))\r\n", sizeof("New member in our chat!))\r\n"), 0);
-		//}
-
 		DWORD thID;
-		//CreateThread(NULL, NULL, &Server::WorkWithClient,&client_socket, NULL, &thID);
 		if (nClients < SOMAXCONN)
 		{
 			std::thread thr(&Server::WorkWithClient, this, client_socket);
@@ -105,19 +116,13 @@ void Server::handle() {
 		{
 			std::cout << "The max amount of connections have been established, new incoming connection failed." << std::endl;
 		}
-		//CreateThread(NULL, NULL, CheckCommonBuffer, &client_socket, NULL, &thID);
-		//clients.push_back(client_socket);
 	}
 	return;
 }
 
 DWORD WINAPI Server::WorkWithClient( long client_socket)
 {
-	SOCKET my_sock;
-	my_sock = ((SOCKET *)client_socket)[0];
 	char buff[1024] ;
-
-	//send(my_sock, "Hello, new member! This's our chat!))\r\n", sizeof("Hello, new member! This's our chat!))\r\n"), 0);
 
 	while (true) {
 		size_t bytesReceived;
@@ -136,101 +141,48 @@ DWORD WINAPI Server::WorkWithClient( long client_socket)
 
 		char responseCode = interpret(buffer, client_socket);
 
+		if (responseCode == CONNECT_SUCCESS)
+		{
+			std::string mess="Successful connect!\0";
+			send(client_socket, mess.c_str(), mess.length(), 0);
+		}
+		else if (responseCode == ERROR_DOES_NOT_CONNECT)
+		{
+			std::string mess = "User doesn't exist!\0";
+			send(client_socket, mess.c_str(), mess.length(), 0);
+		}
+		else if (responseCode == ERROR_SEND_MESSAGE)
+		{
+			std::string mess = "User for conversation isn't selected\0";
+			send(client_socket, mess.c_str(), mess.length(), 0);
+		}
+		
 		if (responseCode != 0) {
 			send(client_socket, &responseCode, 1, 0);
 		}
+		Sleep(650);
 	}
-
-
-	
-	while (bytes_recv = recv(client_socket, buff, sizeof(buff), 0))
-	{
-		cbuff = buff;
-		//send(my_sock, &buff[0], bytes_recv, 0);
-
-
-		std::cout << buff << std::endl;
-	}
-	
 	std::cout << "-disconnect" << std::endl;
 
 		closesocket(client_socket);
 	return 0;
 }
 
-
-DWORD WINAPI CheckCommonBuffer(LPVOID client_socket)
-{
-
-	SOCKET my_sock;
-	my_sock = ((SOCKET *)client_socket)[0];
-
-	while (true)
-	{
-		if (cbuff[0] != 9 && bytes_recv>1)
-
-		{
-			//send(my_sock, buf, sizeof(buf), 0);
-			hh();
-			cbuff[0] = 9;
-			//Sleep(2000);
-		}
-	}
-}
-
-void hh()
-{
-	for (auto cl : clients)
-	{
-		send(cl, cbuff, 1024, 0);
-	}
-}
-
-
-
-/**
-* Server.cpp
-*
-* By Ryan Wise
-* March 11, 2015
-*
-* Implementation of a server that handles a simple chat client by sending messages
-* between two clients, storing and retrieving user accounts, and handling authentication
-* of user accounts.
-*/
-
-#include "helper.h"
-#include <iostream>
-#include <fstream>
-#include <sys/types.h>
-
-#include <sys/stat.h>
-#include <cstring>
-#include <string>
-#include <thread>
-#include <vector>
-#include <WinSock2.h>
-#include <WS2tcpip.h>
-
-
-using namespace std;
-
-
-
-
-
-char Server::interpret(string str, long connection) {
-	vector<string> data = parseString(str);
-	string function = data.at(0);
+char Server::interpret(std::string str, long connection) {
+	std::vector<std::string> data = parseString(str);
+	std::string function = data.at(0);
 
 	if (function == "create") {
 		return createAccount(data);
+	}
+	else if (function == "connect") {
+		return initConnection(data);
 	}
 	else if (function == "login") {
 		return login(data, connection);
 	}
 	else if (function == "send") {
-		sendMessage(data);
+		return sendMessage(data);
 	}
 	else if (function == "confirm") {
 		return checkUserExists(data);
@@ -243,15 +195,16 @@ char Server::interpret(string str, long connection) {
 }
 
 
-char Server::endConversation(vector<string> data) {
-	string closer = data.at(1);
-	string other = data.at(2);
+char Server::endConversation(std::vector<std::string> data) {
+	std::string closer = data.at(1);
+	std::string other = data.at(2);
 
 	for (int i = 0; i < connections.size(); i++) {
 		if (connections.at(i).userName == other) {
 			connections.at(i).currentConversation.clear();
 			char resp = CONVERSATION_ENDED;
 			send(connections.at(i).id, &resp, 1, 0);
+			Sleep(650);
 		}
 
 		if (connections.at(i).userName == closer) {
@@ -263,7 +216,7 @@ char Server::endConversation(vector<string> data) {
 }
 
 
-char Server::createAccount(vector<string> data) {
+char Server::createAccount(std::vector<std::string> data) {
 	std::string userName = data.at(1);
 	std::string password = data.at(2);
 	std::string firstName = data.at(3);
@@ -271,18 +224,44 @@ char Server::createAccount(vector<string> data) {
 
 	users.push_back(User(userName, password, firstName, lastName));
 
+	std::ofstream fout;
+	fout.open("C:\\Users\\home\\Documents\\\Visual Studio 2017\\Projects\\Client_Server\\users.txt", std::ios_base::app);
+	if (!fout.is_open())
+		std::cout << "Файл не может быть открыт!\n";
+	else
+	{
+		fout << userName;
+		fout << "\t";
+		fout << password;
+		fout << "\t";
+		fout << firstName;
+		fout << "\t";
+		fout << lastName;
+		fout << "\n";
+		fout.close();
+	}
+
 	return CREATE_ACCOUNT_SUCCESS;
 }
     
 
-char Server::login(vector<string> data, long connection) {
+char Server::login(std::vector<std::string> data, long connection) {
 	
-	for (auto user : users)
+	for (int i=0; i<users.size();i++)
 	{
-		if (user.userName == data.at(1))
+		if (users.at(i).userName == data.at(1))
 		{
-			if (user.password == data.at(2))
+			if (users.at(i).password == data.at(2))
 			{
+				connections.push_back(Connection(connection, data.at(1)));
+				for (auto msg : users.at(i).stackMess)
+				{
+					send(connection, msg.c_str(), msg.length(), 0);
+					Sleep(650);
+				}
+				send(connection, "end",sizeof("end"), 0);
+				Sleep(650);
+				users.at(i).stackMess.clear();
 				return PASSWORD_CORRECT;
 			}
 			else {
@@ -295,9 +274,9 @@ char Server::login(vector<string> data, long connection) {
 }
 
 
-char Server::checkUserExists(vector<string> data) {
-	string user = data.at(1);
-	string from = data.at(2);
+char Server::checkUserExists(std::vector<std::string> data) {
+	std::string user = data.at(1);
+	std::string from = data.at(2);
 
 	for (int i = 0; i < connections.size(); i++) {
 		if (connections.at(i).userName == user) {
@@ -318,98 +297,62 @@ char Server::checkUserExists(vector<string> data) {
 }
 
 
-void Server::sendMessage(vector<string> data) {
-	string sentFrom = data.at(1);
-	string sendTo = data.at(2);
-	string msg = data.at(3);
+char Server::sendMessage(std::vector<std::string> data) {
+	std::string sentFrom = data.at(1);
+	std::string msg = data.at(1)+": "+ data.at(2);
 	bool success = false;
 
 	const char *message = msg.c_str();
 
 	for (int i = 0; i < connections.size(); i++) {
-		if (connections.at(i).userName == sendTo && connections.at(i).currentConversation.length() != 0) {
-			size_t bytesSent;
-			int len = strlen(message);
-			bytesSent = send(connections.at(i).id, message, len, 0);
+		if (connections.at(i).userName == sentFrom)
+		{
+			for (int j = 0; j < connections.size(); j++)
+			{
+				if (connections.at(j).userName == connections.at(i).currentConversation) {
+					size_t bytesSent;
+					int len = strlen(message);
+					bytesSent = send(connections.at(j).id, message, len, 0);
+					Sleep(650);
+					return SEND_MESSAGE_SUCCESS;
+				}
+			}
+			for (int j = 0; j < users.size(); j++)
+			{
+				if (users.at(j).userName == connections.at(i).currentConversation)
+				{
+					users.at(j).stackMess.push_back(msg);
+					return SEND_MESSAGE_SUCCESS;
+				}
+			}
 		}
 	}
+	return ERROR_SEND_MESSAGE;
 }
 
-void Server::mainLoop(long connection) {
-	while (true) {
-		size_t bytesReceived;
-		char buffer[1024];
-		bytesReceived = recv(connection, buffer, 1024, 0);
 
-		if (bytesReceived < 0) {
-			cout << "Error receiving data from client!" << endl;
-			break;
-		}
-		else if (bytesReceived == 0) {
-			break;
-		}
 
-		buffer[bytesReceived] = '\0';
-
-		char responseCode = interpret(buffer, connection);
-
-		if (responseCode != 0) {
-			send(connection, &responseCode, 1, 0);
-		}
-	}
-
+char Server::initConnection(std::vector<std::string> data) {
+	std::string connectFrom = data.at(1);
+	std::string connectTo = data.at(2);
 	for (int i = 0; i < connections.size(); i++) {
-		if (connections.at(i).id == connection) {
-			connections.erase(connections.begin() + i);
-			break;
+		if (connections.at(i).userName == connectFrom) {
+			connections.at(i).currentConversation.clear();
+			for (int j = 0; j < users.size(); j++)
+			{
+				if (users[j].userName == connectTo)
+				{
+					connections.at(i).currentConversation = users[j].userName;
+					return CONNECT_SUCCESS;
+				}
+
+			}
 		}
 	}
 
-	closesocket(connection);
+	return ERROR_DOES_NOT_CONNECT;
 }
 
-
-void Server::initConnection(long connection) {
-	if (numCurrentConnections == MAX_CONNECTIONS) {
-		cout << "The max amount of connections have been established, new incoming connection failed." << endl;
-		return;
-	}
-
-	thread thr(&Server::mainLoop, this, connection);
-	thr.detach();
-}
-
-//
-//void Server::start() {
-//	sock = socket(serverInfoList->ai_family, serverInfoList->ai_socktype, serverInfoList->ai_protocol);
-//
-//	int yes = 1;
-//	char* b="";
-//	itoa(yes, b, 10);
-//	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, b, sizeof(int));
-//	bind(sock, serverInfoList->ai_addr, serverInfoList->ai_addrlen);
-//
-//	listen(sock, 5);
-//	waitForConnection();
-//}
-
-
-//
-//void Server::waitForConnection() {
-//	long connection;
-//	struct sockaddr_storage clientAddr;
-//	int clientAddrSize = sizeof(clientAddr);
-//	cout << "Chat server initialized." << endl;
-//
-//	while (true) {
-//		connection = accept(sock, (struct sockaddr *) &clientAddr, &clientAddrSize);
-//
-//		if (connection == -1)
-//			cout << "Error establishing connection with a client!" << endl;
-//		else
-//			initConnection(connection);
-//	}
-//}
 
 
 
